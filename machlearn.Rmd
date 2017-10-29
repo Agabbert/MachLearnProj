@@ -1,0 +1,100 @@
+---
+title: "Machine Learning Course Project"
+output: 
+  html_document:
+    keep_md: true
+---
+
+The goal of this project is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants to predict which activity they were performing. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways.
+
+#### Load useful packages
+```{r Load packages, message=FALSE, warning=FALSE}
+library(lubridate)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(knitr)
+library(AppliedPredictiveModeling)
+library(caret)
+library(ElemStatLearn)
+library(pgmm)
+library(rpart)
+library(gbm)
+library(forecast)
+library(e1071)
+library(plyr)
+library(randomForest)
+library(MASS)
+```
+
+## Loading and preprocessing the data
+```{r Read and inspect data, cache=TRUE, message=FALSE, warning=FALSE}
+training.csv <- read.csv(file = "pml-training.csv")
+dim(training.csv)
+
+valid.csv <- read.csv(file = "pml-testing.csv")
+dim(valid.csv)
+
+unique(training.csv$classe)
+
+## Remove data not useful for prediction
+training.csv <- training.csv[, -(1:7)]
+training.csv <- tbl_df(training.csv)
+
+training.csv <- bind_cols(lapply(training.csv[, 1:152], as.character), training.csv[,153])
+training.csv <- bind_cols(lapply(training.csv[, 1:152], as.numeric), training.csv[,153])
+training.csv <- training.csv[ , colSums(is.na(training.csv)) == 0]
+training.csv[1:5, c(1:8, 53)]
+
+valid.csv <- valid.csv[, -(1:7)]
+valid.csv <- tbl_df(valid.csv)
+
+valid.csv <- bind_cols(lapply(valid.csv[, 1:152], as.character), valid.csv[,153])
+valid.csv <- bind_cols(lapply(valid.csv[, 1:152], as.numeric), valid.csv[,153])
+valid.csv <- valid.csv[ , colSums(is.na(valid.csv)) == 0]
+valid.csv[1:5, c(1:8, 53)]
+```
+
+## Partition Data
+The data set has been cleaned and is ready to be partitioned. The training data set was broken into a training and testing set of data and the "testing" provided set of data will be used for validation.
+```{r partition_data}
+set.seed(133) # for reproducibility
+inTrain <- createDataPartition(training.csv$classe, p = .7)[[1]]
+training <- training.csv[inTrain, ]
+testing <- training.csv[-inTrain,]
+```
+
+## Modeling
+Three models were created for comparison. Random forest was chosen since it has a reputation of being one of the most accurate prediction methods available. Linear discriminant analysis was chosen for the potentional for graphical representation and understanding. SVM was chosen as a method which lends itself to modeling an unknown distribution.
+```{r modeling, cache=TRUE}
+mod.rf <- train(classe ~ ., data = training, method = "rf", ntree = 20)
+mod.lda <- train(classe ~ ., data = training, method = "lda")
+mod.svm <- svm(classe ~ ., data = training)
+```
+
+## Prediction and Out of Sample Error
+```{r predict, cache=TRUE}
+pred.rf <- predict(mod.rf, testing)
+pred.lda <- predict(mod.lda, testing)
+pred.svm <- predict(mod.svm, testing)
+
+pred.df <- data.frame(pred.rf, pred.svm, classe = testing$classe)
+head(pred.df)
+
+# Random Forest
+confusionMatrix(pred.rf, testing$classe)$overall[1]
+# Linear Discriminant
+confusionMatrix(pred.lda, testing$classe)$overall[1]
+# SVM
+confusionMatrix(pred.svm, testing$classe)$overall[1]
+```
+
+Random forest showed the best accuracy, thus it was chosen for the model to use for prediction. In addition because the accuracy was so high it was assumed that combining the methods wouldn't yield significantly better results.
+
+## Answer
+```{r Answer1}
+pred.valid <- predict(mod.rf, valid.csv); pred.valid
+
+answer <- data.frame(pred.valid, problem.id = valid.csv$problem_id)
+write.csv(answer, file = "prediction.csv", row.names = FALSE)
+```
